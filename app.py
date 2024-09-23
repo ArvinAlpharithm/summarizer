@@ -64,8 +64,7 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    # App header
-    st.title("Text Summarization App (Powered by Groq LLM)")
+  
    
     # Check if the user wants to input text or upload a PDF file
     option = st.radio("Select Input Type", ("Text", "PDF"))
