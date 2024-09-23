@@ -1,25 +1,32 @@
 import os
 from altair import themes
-import openai
 import streamlit as st
-
 from PyPDF2 import PdfReader
+from llama_index.llms.groq import Groq
+import logging
+from dotenv import load_dotenv
 
-# Hardcoded OpenAI API key
-openai.api_key = "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"
+# Load environment variables from .env file
+load_dotenv()
 
-def load_files():
-    text = ""
-    data_dir = os.path.join(os.getcwd(), "data")
-    for filename in os.listdir(data_dir):
-        if filename.endswith(".txt"):
-            with open(os.path.join(data_dir, filename), "r") as f:
-                text += f.read()
-    return text
+# Set up logging
+logging.basicConfig(level=logging.INFO)
 
+# Fetch the Groq API key from environment variables
+api_key = os.getenv("GROQ_API_KEY")
+
+# Check if the API key is available
+if not api_key:
+    logging.error("Groq API key not found in environment variables.")
+    st.error("API key is missing! Please check your environment settings.")
+    exit()
+
+# Set up the Groq LLM using the fetched API key
+llm = Groq(model="llama3-70b-8192", api_key=api_key)
+
+# Function to extract text from a PDF
 def extract_text_from_pdf(pdf_file):
     reader = PdfReader(pdf_file)
-
     raw_text = ""
 
     for page in reader.pages:
@@ -28,26 +35,25 @@ def extract_text_from_pdf(pdf_file):
             raw_text += content
     return raw_text
 
+# Function to generate a summary using Groq LLM
 def get_response(text):
     prompt = f"""
-        You are an expert in summarizing text. You will be given a text delimited by four backquotes, 
+        You are an expert in summarizing text. You will be given a text delimited by four backquotes. 
         Make sure to capture the main points, key arguments, and any supporting evidence presented in the articles.
         Your summary should be informative and well-structured, ideally consisting of 3-5 sentences. Provide the summary
         in the form of bullet points. Give a line break between each bullet point.
 
         text: ````{text}````
         """
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {
-                "role": "system",
-                "content": prompt,
-            },
-        ],
-    )
-    return response["choices"][0]["message"]["content"]
+    
+    try:
+        response = llm.complete(prompt)
+        return response.text.strip()
+    except Exception as e:
+        logging.error(f"Error during LLM call: {e}")
+        return "An error occurred while processing your request."
 
+# Main Streamlit app
 def main():
     # Apply theme settings using markdown
     st.markdown("""
@@ -58,35 +64,32 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    # Header
+    # App header
+    st.title("Text Summarization App (Powered by Groq LLM)")
    
-    # Check if the user wants to write a text or upload a PDF file
+    # Check if the user wants to input text or upload a PDF file
     option = st.radio("Select Input Type", ("Text", "PDF"))
     
-    # Create area for the user to write the text
+    # Handle text input
     if option == "Text":
         user_input = st.text_area("Enter Text", "")
 
-        # Submit Button
+        # Submit button for text input
         if st.button("Submit") and user_input != "":
-            # Call the get_response function to display the response
-            response = get_response(user_input)
-            # Display the summary
+            response = get_response(user_input)  # Get the LLM response
             st.subheader("Summary")
             st.markdown(f">{response}")
         else:
             st.error("Please enter a text.")
+
+    # Handle PDF input
     else:
-        # Create a file uploader for the user to upload the PDF file
         uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
 
-        # Creating a submit button for the PDF file
+        # Submit button for PDF input
         if st.button("Submit") and uploaded_file is not None:
-            # Extract text from a PDF file
-            text = extract_text_from_pdf(uploaded_file)
-            
-            # Call the get_response function to display the response
-            response = get_response(text=text)
+            text = extract_text_from_pdf(uploaded_file)  # Extract text from PDF
+            response = get_response(text=text)  # Get the LLM response
             st.subheader("Summary")
             st.markdown(f">{response}")
         else:
